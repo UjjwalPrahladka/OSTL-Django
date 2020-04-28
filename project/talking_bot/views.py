@@ -15,12 +15,15 @@ docs_x = []
 docs_y = []
 data = []
 conversations = []
-def home(request):
+def train(request):
+	global model
+	if model != None:
+		return render(request, 'home.html', {'answer':''})
 	global stemmer
 	stemmer = LancasterStemmer()
-	global model
+	
 	global data
-	with open('C:\\Users\\Admin\\projects\\bot\\model\\intents.json') as file:
+	with open('E:\\MAIN\\intents.json') as file:
 		data = json.load(file)
 	global words
 	global labels
@@ -59,7 +62,7 @@ def home(request):
 	
 	tensorflow.reset_default_graph()
 	net = tflearn.input_data(shape = [None, len(training[0])])
-	net = tflearn.fully_connected(net, 20)
+	net = tflearn.fully_connected(net, len(training)/2)
 	net = tflearn.fully_connected(net, 20)
 	net = tflearn.fully_connected(net, len(output[0]), activation = 'softmax')
 	net = tflearn.regression(net)
@@ -67,7 +70,12 @@ def home(request):
 	model = tflearn.DNN(net)
 	model.fit(training, output, n_epoch = 1000, batch_size = 8)
 
-	return render(request, 'home.html', {'answer':''})
+	return render(request, 'home.html')
+
+def home(request):
+	global conversations
+	conversations = []
+	return render(request, 'home.html')
 
 def bag_of_words(s, words):
 	bag = [0 for  _ in range(len(words))]
@@ -112,3 +120,77 @@ def display(request):
 	conv.answer = answer
 	conversations.append(conv)
 	return render(request, 'home.html', {'conversations': conversations})
+
+#Text Reading
+from django.http import HttpResponse
+import pytesseract as tess
+from PIL import Image
+import re
+
+def show(request):
+	tess.pytesseract.tesseract_cmd = r'C:\Users\Admin\AppData\Local\Tesseract-OCR\tesseract.exe'
+	img = Image.open('media/res.png')
+	text = tess.image_to_string(img)
+	lines = [el.strip().lower() for el in text.split('\n') if len(el.strip()) > 0]
+	text = ' '.join(lines)
+	# print(text)
+	phone = None
+	pattern = re.compile(r'(\+\d{1,2}\s)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}')
+	m = re.finditer(pattern, text)
+	for match in m:
+		phone = match.group(0)
+	print(phone)
+
+	email = None
+	pattern = re.compile(r'(\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+)')
+	m = re.finditer(pattern, text)
+	for match in m:
+		email = match.group(0)
+	print(email)
+
+	education = []
+	pattern = re.compile(r"(be|me|bsc|msc|btech|ba|ma|bachelor|bachelor's degree|master|master's degree|doctorate)\s?(of|in)\s?(\w+)")
+	m = re.finditer(pattern, text)
+	for match in m:
+		education.append(match.group(3))
+	print(education)
+
+	scores = []
+	pattern = re.compile(r'(cgpa|c.g.p.a.)\s*(\d+.?\d+)')
+	m = re.finditer(pattern, text)
+	for match in m:
+		scores.append(match.group(2))
+	pattern = re.compile(r'(\d+.?\d+)%')
+	m = re.finditer(pattern, text)
+	for match in m:
+		scores.append(match.group(1))
+	pattern = re.compile(r'(\d+.?\d+)(/\d+.?\d+)?\s*(cgpa|c.g.p.a.)')
+	m = re.finditer(pattern, text)
+	for match in m:
+		scores.append(match.group(1))
+
+	print(scores)
+
+	return HttpResponse('Text Read Successfully')
+
+from django.shortcuts import render, redirect
+from .models import Images
+from .forms import ImagesForm
+
+def home_view(request):
+    context = {}
+    if request.method == "POST":
+        form = ImagesForm(request.POST, request.FILES)
+        if form.is_valid():
+            name = form.cleaned_data.get("name")
+            img = form.cleaned_data.get("img")
+            obj = Images.objects.create(
+                                 name = name,
+                                 img = img
+                                 )
+            obj.save()
+            return redirect('show')
+    else:
+        form = ImagesForm()
+    context['form']= form
+    return render(request, "resume.html", context)
